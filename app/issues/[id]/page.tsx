@@ -128,7 +128,11 @@ export default function IssuePage() {
     if (!files || files.length === 0) return;
     setUploading(true);
     try {
-      await Promise.all(Array.from(files).map(file => uploadAttachment(id, file)));
+      await Promise.all(Array.from(files).map(file => {
+        const formData = new FormData();
+        formData.append('file', file);
+        return uploadAttachment(id, formData);
+      }));
       await load();
       showToast(`${files.length} file(s) attached`, '📎');
     } catch (err) {
