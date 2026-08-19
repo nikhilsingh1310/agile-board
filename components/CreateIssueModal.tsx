@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import type { Issue, Project, Epic, Sprint } from '@/lib/types';
 import type { IssueType, IssuePriority } from '@/lib/types';
-import { getEpics, getSprints, createIssue } from '@/lib/store';
+import { getEpics, getSprints, createIssue, getProjectMembers } from '@/lib/store';
 import { TYPE_CONFIG, PRIORITY_CONFIG } from '@/lib/config';
 import { useToast } from '@/components/ToastProvider';
 
@@ -27,13 +27,19 @@ export default function CreateIssueModal({ project, defaultSprintId, onClose, on
   const [sprintId, setSprintId] = useState(defaultSprintId ?? '');
   const [epics, setEpics] = useState<Epic[]>([]);
   const [sprints, setSprints] = useState<Sprint[]>([]);
+  const [members, setMembers] = useState<any[]>([]);
   const [error, setError] = useState('');
 
   useEffect(() => {
     (async () => {
-      const [eps, sps] = await Promise.all([getEpics(project.id), getSprints(project.id)]);
+      const [eps, sps, mems] = await Promise.all([
+        getEpics(project.id), 
+        getSprints(project.id),
+        getProjectMembers(project.id)
+      ]);
       setEpics(eps);
       setSprints(sps.filter(s => s.status !== 'completed'));
+      setMembers(mems || []);
     })();
   }, [project.id]);
 
@@ -119,7 +125,14 @@ export default function CreateIssueModal({ project, defaultSprintId, onClose, on
             <div style={{ display: 'flex', gap: 12 }}>
               <div style={{ flex: 1 }}>
                 <label className="label">Assignee</label>
-                <input className="input" value={assignee} onChange={e => setAssignee(e.target.value)} placeholder="Name..." />
+                <select className="input select" value={assignee} onChange={e => setAssignee(e.target.value)}>
+                  <option value="">Unassigned</option>
+                  {members.map(m => (
+                    <option key={m.user_id} value={m.user_id}>
+                      {m.profiles?.full_name || 'User'}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div style={{ flex: 1 }}>
                 <label className="label">Story points</label>

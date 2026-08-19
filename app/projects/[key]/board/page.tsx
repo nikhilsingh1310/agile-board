@@ -59,7 +59,7 @@ function IssueCard({ issue, onClick, isDragging }: IssueCardProps) {
               {issue.story_points}
             </span>
           )}
-          {issue.assignee && <Avatar name={issue.assignee} color={avatarColor(issue.assignee)} />}
+          {issue.assignee && <Avatar name={issue.assignee_profile?.full_name || issue.assignee} color={avatarColor(issue.assignee_profile?.full_name || issue.assignee)} />}
         </div>
       </div>
     </div>

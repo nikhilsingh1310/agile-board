@@ -50,6 +50,8 @@ export interface Issue {
   priority: IssuePriority;
   assignee: string | null;
   reporter: string;
+  assignee_profile?: { full_name: string; avatar_url: string };
+  reporter_profile?: { full_name: string; avatar_url: string };
   story_points: number | null;
   due_date: string | null;
   labels: string[];

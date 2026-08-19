@@ -1,7 +1,32 @@
 -- ==============================================================================
--- PERSONAL JIRA (jira-clone) - COMPLETE SUPABASE SCHEMA & POLICIES
+-- SECURE JIRA CLONE - COMPLETE SUPABASE SCHEMA & POLICIES (WITH RBAC & SUPERADMIN)
 -- Run this in your Supabase SQL Editor: https://supabase.com/dashboard/project/_/sql
 -- ==============================================================================
+
+-- 0. Profiles & Auth Setup
+create table if not exists public.profiles (
+  id uuid primary key references auth.users (id) on delete cascade,
+  full_name text,
+  avatar_url text,
+  is_superadmin boolean not null default false,
+  created_at timestamptz not null default now()
+);
+
+-- Trigger to auto-create profile on signup
+create or replace function public.handle_new_user()
+returns trigger as $$
+begin
+  insert into public.profiles (id, full_name, avatar_url)
+  values (new.id, new.raw_user_meta_data->>'full_name', new.raw_user_meta_data->>'avatar_url')
+  on conflict (id) do nothing;
+  return new;
+end;
+$$ language plpgsql security definer;
+
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute procedure public.handle_new_user();
 
 -- 1. Projects Table
 create table if not exists public.projects (
@@ -13,6 +38,35 @@ create table if not exists public.projects (
   issue_counter integer not null default 0,
   created_at timestamptz not null default now()
 );
+
+-- 1.5 Project Members (Junction Table for Roles)
+create table if not exists public.project_members (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references public.projects (id) on delete cascade,
+  user_id uuid not null references public.profiles (id) on delete cascade,
+  role text not null check (role in ('admin', 'developer', 'qa', 'ba')),
+  created_at timestamptz not null default now(),
+  unique(project_id, user_id)
+);
+
+-- Trigger to auto-add project creator as 'admin'
+create or replace function public.handle_new_project()
+returns trigger as $$
+begin
+  if auth.uid() is not null then
+    insert into public.project_members (project_id, user_id, role)
+    values (new.id, auth.uid(), 'admin')
+    on conflict do nothing;
+  end if;
+  return new;
+end;
+$$ language plpgsql security definer;
+
+drop trigger if exists on_project_created on public.projects;
+create trigger on_project_created
+  after insert on public.projects
+  for each row execute procedure public.handle_new_project();
+
 
 -- 2. Epics Table
 create table if not exists public.epics (
@@ -51,8 +105,8 @@ create table if not exists public.issues (
   description text,
   status text not null default 'todo' check (status in ('todo', 'in_progress', 'in_review', 'done')),
   priority text not null default 'medium' check (priority in ('low', 'medium', 'high', 'critical')),
-  assignee text,
-  reporter text not null default 'You',
+  assignee uuid references public.profiles (id) on delete set null,
+  reporter uuid not null references public.profiles (id) on delete restrict,
   story_points numeric,
   due_date text,
   labels text[] default '{}',
@@ -65,7 +119,7 @@ create table if not exists public.issues (
 create table if not exists public.comments (
   id uuid primary key default gen_random_uuid(),
   issue_id uuid not null references public.issues (id) on delete cascade,
-  author text not null default 'You',
+  author_id uuid not null references public.profiles (id) on delete cascade,
   body text not null,
   created_at timestamptz not null default now()
 );
@@ -74,7 +128,7 @@ create table if not exists public.comments (
 create table if not exists public.activity_logs (
   id uuid primary key default gen_random_uuid(),
   issue_id uuid not null references public.issues (id) on delete cascade,
-  actor text not null default 'You',
+  actor_id uuid not null references public.profiles (id) on delete cascade,
   field_changed text not null,
   old_value text,
   new_value text,
@@ -98,7 +152,7 @@ create table if not exists public.attachments (
   storage_path text not null,
   size_bytes bigint not null default 0,
   mime_type text,
-  uploaded_by text not null default 'You',
+  uploaded_by uuid not null references public.profiles (id) on delete cascade,
   created_at timestamptz not null default now()
 );
 
@@ -118,14 +172,41 @@ create index if not exists idx_issues_parent_id on public.issues (parent_id);
 create index if not exists idx_comments_issue_id on public.comments (issue_id);
 create index if not exists idx_activity_logs_issue_id on public.activity_logs (issue_id);
 create index if not exists idx_attachments_issue_id on public.attachments (issue_id);
+create index if not exists idx_project_members_project_id on public.project_members (project_id);
+create index if not exists idx_project_members_user_id on public.project_members (user_id);
 
 -- ==============================================================================
--- ROW LEVEL SECURITY (RLS) & PUBLIC PERMISSIONS
--- This app uses direct client-side Supabase operations (anon key).
--- We enable RLS and add full CRUD policies for public/anon access.
+-- SECURITY DEFINER HELPERS (PREVENTS INFINITE RECURSION IN RLS)
 -- ==============================================================================
 
+create or replace function public.is_superadmin()
+returns boolean as $$
+  select exists (
+    select 1 from public.profiles where id = auth.uid() and is_superadmin = true
+  );
+$$ language sql security definer stable;
+
+create or replace function public.is_project_member(p_id uuid)
+returns boolean as $$
+  select exists (
+    select 1 from public.project_members where project_id = p_id and user_id = auth.uid()
+  );
+$$ language sql security definer stable;
+
+create or replace function public.is_project_admin(p_id uuid)
+returns boolean as $$
+  select exists (
+    select 1 from public.project_members where project_id = p_id and user_id = auth.uid() and role = 'admin'
+  );
+$$ language sql security definer stable;
+
+-- ==============================================================================
+-- ROW LEVEL SECURITY (RLS) & AUTHENTICATED PERMISSIONS
+-- ==============================================================================
+
+alter table public.profiles enable row level security;
 alter table public.projects enable row level security;
+alter table public.project_members enable row level security;
 alter table public.epics enable row level security;
 alter table public.sprints enable row level security;
 alter table public.issues enable row level security;
@@ -135,53 +216,115 @@ alter table public.issue_links enable row level security;
 alter table public.attachments enable row level security;
 alter table public.labels enable row level security;
 
--- Drop existing policies if any to prevent conflicts
-drop policy if exists "Allow all access to projects" on public.projects;
-drop policy if exists "Allow all access to epics" on public.epics;
-drop policy if exists "Allow all access to sprints" on public.sprints;
-drop policy if exists "Allow all access to issues" on public.issues;
-drop policy if exists "Allow all access to comments" on public.comments;
-drop policy if exists "Allow all access to activity_logs" on public.activity_logs;
-drop policy if exists "Allow all access to issue_links" on public.issue_links;
-drop policy if exists "Allow all access to attachments" on public.attachments;
-drop policy if exists "Allow all access to labels" on public.labels;
+-- Drop all old policies to avoid recursion
+drop policy if exists "Profiles are viewable by everyone" on public.profiles;
+drop policy if exists "Users can update own profile" on public.profiles;
+drop policy if exists "Users can update own profile or superadmins can update" on public.profiles;
+drop policy if exists "Allow all access to profiles" on public.profiles;
 
--- Create full access policies for anon/authenticated
-create policy "Allow all access to projects" on public.projects for all using (true) with check (true);
-create policy "Allow all access to epics" on public.epics for all using (true) with check (true);
-create policy "Allow all access to sprints" on public.sprints for all using (true) with check (true);
-create policy "Allow all access to issues" on public.issues for all using (true) with check (true);
-create policy "Allow all access to comments" on public.comments for all using (true) with check (true);
-create policy "Allow all access to activity_logs" on public.activity_logs for all using (true) with check (true);
-create policy "Allow all access to issue_links" on public.issue_links for all using (true) with check (true);
-create policy "Allow all access to attachments" on public.attachments for all using (true) with check (true);
-create policy "Allow all access to labels" on public.labels for all using (true) with check (true);
+drop policy if exists "Users can view members of their projects" on public.project_members;
+drop policy if exists "Project members and superadmins can view members" on public.project_members;
+drop policy if exists "Admins can insert members" on public.project_members;
+drop policy if exists "Admins and superadmins can insert members" on public.project_members;
+drop policy if exists "Admins can update members" on public.project_members;
+drop policy if exists "Admins and superadmins can update members" on public.project_members;
+drop policy if exists "Admins can delete members" on public.project_members;
+drop policy if exists "Admins and superadmins can delete members" on public.project_members;
 
--- ==============================================================================
--- GRANT PERMISSIONS TO ANON AND AUTHENTICATED ROLES
--- ==============================================================================
-grant usage on schema public to anon, authenticated;
-grant all on all tables in schema public to anon, authenticated;
-grant all on all sequences in schema public to anon, authenticated;
-grant all on all routines in schema public to anon, authenticated;
+drop policy if exists "Users can view their projects" on public.projects;
+drop policy if exists "Project members and superadmins can view projects" on public.projects;
+drop policy if exists "Authenticated users can create projects" on public.projects;
+drop policy if exists "Admins can update projects" on public.projects;
+drop policy if exists "Admins and superadmins can update projects" on public.projects;
+drop policy if exists "Admins can delete projects" on public.projects;
+drop policy if exists "Admins and superadmins can delete projects" on public.projects;
 
-alter default privileges in schema public grant all on tables to anon, authenticated;
-alter default privileges in schema public grant all on sequences to anon, authenticated;
-alter default privileges in schema public grant all on routines to anon, authenticated;
+drop policy if exists "Project members can manage epics" on public.epics;
+drop policy if exists "Project members and superadmins can manage epics" on public.epics;
+drop policy if exists "Project members can manage sprints" on public.sprints;
+drop policy if exists "Project members and superadmins can manage sprints" on public.sprints;
+drop policy if exists "Project members can manage issues" on public.issues;
+drop policy if exists "Project members and superadmins can manage issues" on public.issues;
+drop policy if exists "Project members can manage labels" on public.labels;
+drop policy if exists "Project members and superadmins can manage labels" on public.labels;
+drop policy if exists "Project members can manage comments" on public.comments;
+drop policy if exists "Project members and superadmins can manage comments" on public.comments;
+drop policy if exists "Project members can manage activity" on public.activity_logs;
+drop policy if exists "Project members and superadmins can manage activity" on public.activity_logs;
+drop policy if exists "Project members can manage issue links" on public.issue_links;
+drop policy if exists "Project members and superadmins can manage issue links" on public.issue_links;
+drop policy if exists "Project members can manage attachments" on public.attachments;
+drop policy if exists "Project members and superadmins can manage attachments" on public.attachments;
 
--- ==============================================================================
--- STORAGE BUCKET FOR ISSUE ATTACHMENTS
--- ==============================================================================
-insert into storage.buckets (id, name, public)
-values ('issue-attachments', 'issue-attachments', true)
-on conflict (id) do nothing;
+-- 1. PROFILES POLICIES
+create policy "Profiles viewable by authenticated" on public.profiles for select using (true);
+create policy "Profiles insertable by authenticated" on public.profiles for insert with check (auth.uid() = id or public.is_superadmin());
+create policy "Profiles updatable by owner or superadmin" on public.profiles for update using (auth.uid() = id or public.is_superadmin());
 
-drop policy if exists "Public Access to issue-attachments" on storage.objects;
+-- 2. PROJECT MEMBERS POLICIES (Non-recursive via security definer helpers)
+create policy "Members select policy" on public.project_members for select using (
+  user_id = auth.uid() or public.is_project_member(project_id) or public.is_superadmin()
+);
+create policy "Members insert policy" on public.project_members for insert with check (
+  public.is_project_admin(project_id) or public.is_superadmin() or user_id = auth.uid()
+);
+create policy "Members update policy" on public.project_members for update using (
+  public.is_project_admin(project_id) or public.is_superadmin()
+);
+create policy "Members delete policy" on public.project_members for delete using (
+  public.is_project_admin(project_id) or public.is_superadmin()
+);
 
-create policy "Public Access to issue-attachments"
-on storage.objects for all
-using (bucket_id = 'issue-attachments')
-with check (bucket_id = 'issue-attachments');
+-- 3. PROJECTS POLICIES
+create policy "Projects select policy" on public.projects for select using (
+  public.is_project_member(id) or public.is_superadmin()
+);
+create policy "Projects insert policy" on public.projects for insert with check (
+  auth.role() = 'authenticated'
+);
+create policy "Projects update policy" on public.projects for update using (
+  public.is_project_admin(id) or public.is_superadmin()
+);
+create policy "Projects delete policy" on public.projects for delete using (
+  public.is_project_admin(id) or public.is_superadmin()
+);
 
+-- 4. EPICS, SPRINTS, ISSUES, LABELS
+create policy "Epics policy" on public.epics for all using (
+  public.is_project_member(project_id) or public.is_superadmin()
+);
 
+create policy "Sprints policy" on public.sprints for all using (
+  public.is_project_member(project_id) or public.is_superadmin()
+);
 
+create policy "Issues policy" on public.issues for all using (
+  public.is_project_member(project_id) or public.is_superadmin()
+);
+
+create policy "Labels policy" on public.labels for all using (
+  public.is_project_member(project_id) or public.is_superadmin()
+);
+
+-- 5. NESTED RELATIONS (Comments, Activity, Links, Attachments)
+create policy "Comments policy" on public.comments for all using (
+  auth.role() = 'authenticated'
+);
+
+create policy "Activity policy" on public.activity_logs for all using (
+  auth.role() = 'authenticated'
+);
+
+create policy "Issue links policy" on public.issue_links for all using (
+  auth.role() = 'authenticated'
+);
+
+create policy "Attachments policy" on public.attachments for all using (
+  auth.role() = 'authenticated'
+);
+
+-- Sync any existing auth users to profiles as superadmin
+insert into public.profiles (id, full_name, is_superadmin)
+select id, coalesce(raw_user_meta_data->>'full_name', email), true
+from auth.users
+on conflict (id) do update set is_superadmin = true;

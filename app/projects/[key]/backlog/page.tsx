@@ -206,7 +206,7 @@ export default function BacklogPage() {
                       <span className="badge" style={{ background: priority.bg, color: priority.color, fontSize: 11 }}>{priority.icon} {priority.label}</span>
                     </div>
                     <div style={{ fontSize: 12, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {issue.assignee ?? <span style={{ color: 'var(--text-muted)' }}>—</span>}
+                      {issue.assignee_profile?.full_name || issue.assignee || <span style={{ color: 'var(--text-muted)' }}>—</span>}
                     </div>
                     <div style={{ fontSize: 12, color: 'var(--text-muted)', textAlign: 'center' }}>
                       {issue.story_points !== null ? issue.story_points : '—'}
