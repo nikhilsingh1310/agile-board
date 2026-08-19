@@ -206,30 +206,87 @@ function LoginForm() {
         {/* 2. AUTH FORM */}
         <form onSubmit={handleAuth} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           {authMode === 'signup' && (
-            <div>
-              <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#334155', marginBottom: 6 }}>
-                Full Name
-              </label>
-              <input
-                name="full_name"
-                type="text"
-                required
-                placeholder="e.g. Nikhil Singh"
-                style={{
-                  width: '100%',
-                  padding: '12px 14px',
-                  borderRadius: 12,
-                  border: '1px solid #cbd5e1',
-                  background: '#ffffff',
-                  fontSize: 14,
-                  outline: 'none',
-                  transition: 'border-color 0.2s',
-                  boxSizing: 'border-box'
-                }}
-                onFocus={e => (e.target.style.borderColor = '#6366f1')}
-                onBlur={e => (e.target.style.borderColor = '#cbd5e1')}
-              />
-            </div>
+            <>
+              <div>
+                <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#334155', marginBottom: 6 }}>
+                  Full Name
+                </label>
+                <input
+                  name="full_name"
+                  type="text"
+                  required
+                  placeholder="e.g. Nikhil Singh"
+                  style={{
+                    width: '100%',
+                    padding: '12px 14px',
+                    borderRadius: 12,
+                    border: '1px solid #cbd5e1',
+                    background: '#ffffff',
+                    fontSize: 14,
+                    outline: 'none',
+                    transition: 'border-color 0.2s',
+                    boxSizing: 'border-box'
+                  }}
+                  onFocus={e => (e.target.style.borderColor = '#6366f1')}
+                  onBlur={e => (e.target.style.borderColor = '#cbd5e1')}
+                />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#334155', marginBottom: 6 }}>
+                    City
+                  </label>
+                  <select
+                    name="city"
+                    required
+                    defaultValue="Mumbai"
+                    style={{
+                      width: '100%',
+                      padding: '12px 14px',
+                      borderRadius: 12,
+                      border: '1px solid #cbd5e1',
+                      background: '#ffffff',
+                      fontSize: 14,
+                      outline: 'none',
+                      transition: 'border-color 0.2s',
+                      boxSizing: 'border-box',
+                      cursor: 'pointer'
+                    }}
+                    onFocus={e => (e.target.style.borderColor = '#6366f1')}
+                    onBlur={e => (e.target.style.borderColor = '#cbd5e1')}
+                  >
+                    <option value="Mumbai">📍 Mumbai</option>
+                    <option value="Pune">📍 Pune</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#334155', marginBottom: 6 }}>
+                    Designation
+                  </label>
+                  <input
+                    name="designation"
+                    type="text"
+                    required
+                    placeholder="e.g. QA / Developer"
+                    style={{
+                      width: '100%',
+                      padding: '12px 14px',
+                      borderRadius: 12,
+                      border: '1px solid #cbd5e1',
+                      background: '#ffffff',
+                      fontSize: 14,
+                      outline: 'none',
+                      transition: 'border-color 0.2s',
+                      boxSizing: 'border-box'
+                    }}
+                    onFocus={e => (e.target.style.borderColor = '#6366f1')}
+                    onBlur={e => (e.target.style.borderColor = '#cbd5e1')}
+                  />
+                </div>
+              </div>
+            </>
           )}
 
           <div>

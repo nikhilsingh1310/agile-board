@@ -87,10 +87,20 @@ export default function SuperadminPage() {
                           </div>
                         )}
                         <div>
-                          <div style={{ fontWeight: 500, color: 'var(--text-primary)' }}>
-                            {u.full_name || 'Unnamed User'}
-                            {u.id === currentUser?.id && <span style={{ color: 'var(--text-muted)', fontSize: 12, marginLeft: 6 }}>(You)</span>}
+                          <div style={{ fontWeight: 500, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span>{u.full_name || 'Unnamed User'}</span>
+                            {u.id === currentUser?.id && <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>(You)</span>}
+                            {u.city && (
+                              <span style={{ fontSize: 11, background: '#f1f5f9', color: '#475569', padding: '1px 6px', borderRadius: 6, fontWeight: 500 }}>
+                                📍 {u.city}
+                              </span>
+                            )}
                           </div>
+                          {u.designation && (
+                            <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                              💼 {u.designation}
+                            </div>
+                          )}
                           {u.is_superadmin && (
                             <div style={{ fontSize: 11, color: '#eab308', fontWeight: 600, marginTop: 2 }}>👑 SUPERADMIN</div>
                           )}

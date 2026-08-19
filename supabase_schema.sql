@@ -8,6 +8,8 @@ create table if not exists public.profiles (
   id uuid primary key references auth.users (id) on delete cascade,
   full_name text,
   avatar_url text,
+  city text default 'Mumbai',
+  designation text,
   is_superadmin boolean not null default false,
   created_at timestamptz not null default now()
 );
@@ -16,9 +18,17 @@ create table if not exists public.profiles (
 create or replace function public.handle_new_user()
 returns trigger as $$
 begin
-  insert into public.profiles (id, full_name, avatar_url)
-  values (new.id, new.raw_user_meta_data->>'full_name', new.raw_user_meta_data->>'avatar_url')
-  on conflict (id) do nothing;
+  insert into public.profiles (id, full_name, avatar_url, city, designation)
+  values (
+    new.id, 
+    new.raw_user_meta_data->>'full_name', 
+    new.raw_user_meta_data->>'avatar_url',
+    coalesce(new.raw_user_meta_data->>'city', 'Mumbai'),
+    new.raw_user_meta_data->>'designation'
+  )
+  on conflict (id) do update set
+    city = excluded.city,
+    designation = excluded.designation;
   return new;
 end;
 $$ language plpgsql security definer;

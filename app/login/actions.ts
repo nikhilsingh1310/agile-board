@@ -35,6 +35,8 @@ export async function signup(formData: FormData) {
     options: {
       data: {
         full_name: formData.get('full_name') as string,
+        city: formData.get('city') as string || 'Mumbai',
+        designation: formData.get('designation') as string || '',
       }
     }
   }

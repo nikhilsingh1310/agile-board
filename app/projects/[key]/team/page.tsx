@@ -130,12 +130,20 @@ export default function TeamSettingsPage({ params }: { params: { key: string } }
                   </div>
                 )}
                 <div>
-                  <div style={{ fontWeight: 500, color: 'var(--text-primary)' }}>
-                    {member.profiles?.full_name || 'Unnamed User'}
-                    {member.user_id === currentUser?.id && <span style={{ color: 'var(--text-muted)', fontSize: 12, marginLeft: 6 }}>(You)</span>}
+                  <div style={{ fontWeight: 500, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span>{member.profiles?.full_name || 'Unnamed User'}</span>
+                    {member.user_id === currentUser?.id && <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>(You)</span>}
+                    {member.profiles?.city && (
+                      <span style={{ fontSize: 11, background: '#f1f5f9', color: '#475569', padding: '1px 6px', borderRadius: 6, fontWeight: 500 }}>
+                        📍 {member.profiles.city}
+                      </span>
+                    )}
                   </div>
-                  <div style={{ fontSize: 12, color: 'var(--text-muted)', textTransform: 'capitalize' }}>
-                    {member.role}
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ textTransform: 'capitalize', fontWeight: 600, color: 'var(--accent)' }}>{member.role}</span>
+                    {member.profiles?.designation && (
+                      <span>• {member.profiles.designation}</span>
+                    )}
                   </div>
                 </div>
               </div>
