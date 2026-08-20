@@ -11,20 +11,27 @@ create table if not exists public.profiles (
   city text default 'Mumbai',
   designation text,
   is_superadmin boolean not null default false,
+  is_approved boolean not null default false,
   created_at timestamptz not null default now()
 );
 
 -- Trigger to auto-create profile on signup
 create or replace function public.handle_new_user()
 returns trigger as $$
+declare
+  is_admin boolean;
 begin
-  insert into public.profiles (id, full_name, avatar_url, city, designation)
+  is_admin := lower(new.email) = 'admin@jira.com';
+  
+  insert into public.profiles (id, full_name, avatar_url, city, designation, is_superadmin, is_approved)
   values (
     new.id, 
     new.raw_user_meta_data->>'full_name', 
     new.raw_user_meta_data->>'avatar_url',
     coalesce(new.raw_user_meta_data->>'city', 'Mumbai'),
-    new.raw_user_meta_data->>'designation'
+    new.raw_user_meta_data->>'designation',
+    is_admin,
+    is_admin
   )
   on conflict (id) do update set
     city = excluded.city,

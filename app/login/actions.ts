@@ -14,10 +14,21 @@ export async function login(formData: FormData) {
     password: formData.get('password') as string,
   }
 
-  const { error } = await supabase.auth.signInWithPassword(data)
+  const { data: authData, error } = await supabase.auth.signInWithPassword(data)
 
   if (error) {
     redirect(`/login?error=${encodeURIComponent(error.message)}`)
+  }
+
+  // Check if account is approved by Admin
+  if (authData.user) {
+    const isMasterAdmin = authData.user.email?.toLowerCase() === 'admin@jira.com';
+    const { data: profile } = await supabase.from('profiles').select('*').eq('id', authData.user.id).maybeSingle();
+
+    if (profile && profile.is_approved === false && !profile.is_superadmin && !isMasterAdmin) {
+      await supabase.auth.signOut();
+      redirect(`/login?error=${encodeURIComponent('⏳ Your account is pending Admin approval. Please contact the administrator to activate your access.')}`)
+    }
   }
 
   revalidatePath('/', 'layout')
@@ -27,8 +38,6 @@ export async function login(formData: FormData) {
 export async function signup(formData: FormData) {
   const supabase = await createClient()
 
-  // type-casting here for convenience
-  // in practice, you should validate your inputs
   const data = {
     email: formData.get('email') as string,
     password: formData.get('password') as string,
@@ -47,16 +56,10 @@ export async function signup(formData: FormData) {
     redirect(`/login?error=${encodeURIComponent(error.message)}`)
   }
 
-  // If email confirmation is required and user has no session
-  if (signUpData.user && !signUpData.session) {
-    // Try immediate signin or inform user
-    const { error: signInError } = await supabase.auth.signInWithPassword({
-      email: data.email,
-      password: data.password,
-    });
-    if (signInError) {
-      redirect(`/login?error=${encodeURIComponent(signInError.message || 'Please check your email to confirm your account or disable email confirmation in Supabase.')}`)
-    }
+  // If new user signed up (not master admin), inform them about pending approval
+  if (signUpData.user && data.email.toLowerCase() !== 'admin@jira.com') {
+    await supabase.auth.signOut();
+    redirect(`/login?error=${encodeURIComponent('✅ Account created successfully! It is now pending Admin approval before you can sign in.')}`)
   }
 
   revalidatePath('/', 'layout')

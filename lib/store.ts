@@ -379,6 +379,12 @@ export async function toggleSuperadmin(userId: string, isSuperadmin: boolean) {
   if (error) throw error;
 }
 
+export async function toggleUserApproval(userId: string, isApproved: boolean) {
+  const supabase = await createClient();
+  const { error } = await supabase.from('profiles').update({ is_approved: isApproved }).eq('id', userId);
+  if (error) throw error;
+}
+
 export async function updateUserProfileAdmin(userId: string, data: { full_name?: string; city?: string; designation?: string; is_superadmin?: boolean }) {
   const supabase = await createClient();
   const { error } = await supabase.from('profiles').update(data).eq('id', userId);

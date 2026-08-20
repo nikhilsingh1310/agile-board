@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { getAllProfiles, getProjects, toggleSuperadmin, getCurrentUserProfile, updateUserProfileAdmin, deleteUserAdmin } from '@/lib/store';
+import { getAllProfiles, getProjects, toggleSuperadmin, toggleUserApproval, getCurrentUserProfile, updateUserProfileAdmin, deleteUserAdmin } from '@/lib/store';
 import { useToast } from '@/components/ToastProvider';
 import Sidebar from '@/components/Sidebar';
 
@@ -11,6 +11,7 @@ export default function SuperadminPage() {
   const [loading, setLoading] = useState(true);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [userFilterTab, setUserFilterTab] = useState<'all' | 'pending' | 'approved'>('all');
 
   // Edit User Modal State
   const [editingUser, setEditingUser] = useState<any>(null);
@@ -18,6 +19,7 @@ export default function SuperadminPage() {
   const [editCity, setEditCity] = useState('Mumbai');
   const [editDesignation, setEditDesignation] = useState('');
   const [editIsSuperadmin, setEditIsSuperadmin] = useState(false);
+  const [editIsApproved, setEditIsApproved] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
   const loadData = async () => {
@@ -48,6 +50,7 @@ export default function SuperadminPage() {
     setEditCity(user.city || 'Mumbai');
     setEditDesignation(user.designation || '');
     setEditIsSuperadmin(!!user.is_superadmin);
+    setEditIsApproved(user.is_approved !== false);
   };
 
   const handleSaveUser = async (e: React.FormEvent) => {
@@ -59,8 +62,11 @@ export default function SuperadminPage() {
         full_name: editName.trim(),
         city: editCity,
         designation: editDesignation.trim(),
-        is_superadmin: editIsSuperadmin
+        is_superadmin: editIsSuperadmin,
       });
+      if (editingUser.is_approved !== editIsApproved) {
+        await toggleUserApproval(editingUser.id, editIsApproved);
+      }
       showToast(`User updated successfully`, '✅');
       setEditingUser(null);
       loadData();
@@ -69,6 +75,17 @@ export default function SuperadminPage() {
       showToast(msg, '❌');
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleToggleApproval = async (user: any) => {
+    const newStatus = user.is_approved === false;
+    try {
+      await toggleUserApproval(user.id, newStatus);
+      showToast(newStatus ? `Approved access for ${user.full_name || 'User'}!` : `Revoked access for ${user.full_name || 'User'}`, newStatus ? '✅' : '⏸️');
+      loadData();
+    } catch (err: any) {
+      showToast(err.message || 'Failed to update approval status', '❌');
     }
   };
 
@@ -89,16 +106,6 @@ export default function SuperadminPage() {
     }
   };
 
-  const handleToggleAdmin = async (userId: string, currentStatus: boolean) => {
-    try {
-      await toggleSuperadmin(userId, !currentStatus);
-      showToast(`Superadmin access ${!currentStatus ? 'granted' : 'revoked'}`, '✅');
-      loadData();
-    } catch (e: any) {
-      showToast(e.message || 'Failed to update access', '❌');
-    }
-  };
-
   // If we've loaded and the current user is NOT a superadmin, don't show the dashboard
   if (!loading && currentUser && !currentUser.is_superadmin) {
     return (
@@ -114,11 +121,24 @@ export default function SuperadminPage() {
     );
   }
 
-  const filteredUsers = users.filter(u => 
-    (u.full_name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (u.designation || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (u.city || '').toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const pendingUsersCount = users.filter(u => u.is_approved === false && !u.is_superadmin).length;
+
+  const filteredUsers = users.filter(u => {
+    const matchesSearch = 
+      (u.full_name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (u.designation || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (u.city || '').toLowerCase().includes(searchQuery.toLowerCase());
+
+    if (!matchesSearch) return false;
+
+    if (userFilterTab === 'pending') {
+      return u.is_approved === false && !u.is_superadmin;
+    }
+    if (userFilterTab === 'approved') {
+      return u.is_approved !== false || u.is_superadmin;
+    }
+    return true;
+  });
 
   return (
     <div className="app-layout">
@@ -146,108 +166,206 @@ export default function SuperadminPage() {
           {loading ? (
             <div style={{ color: 'var(--text-muted)' }}>Loading system data...</div>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 28 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1.25fr 1fr', gap: 28 }}>
               
               {/* Users Panel */}
               <div className="card">
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
                   <h3 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>
-                    All Registered Users ({filteredUsers.length})
+                    Registered Users ({users.length})
                   </h3>
-                  <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>View, Update & Delete Users</span>
+                  {pendingUsersCount > 0 && (
+                    <span style={{ fontSize: 12, background: '#fef3c7', color: '#b45309', padding: '2px 8px', borderRadius: 100, fontWeight: 700 }}>
+                      ⚠️ {pendingUsersCount} pending approval
+                    </span>
+                  )}
+                </div>
+
+                {/* Filter Tabs: All, Pending, Approved */}
+                <div style={{ display: 'flex', gap: 6, marginBottom: 16, borderBottom: '1px solid var(--border-subtle)', paddingBottom: 8 }}>
+                  <button
+                    onClick={() => setUserFilterTab('all')}
+                    style={{
+                      background: userFilterTab === 'all' ? 'var(--accent-subtle)' : 'transparent',
+                      color: userFilterTab === 'all' ? 'var(--accent)' : 'var(--text-secondary)',
+                      border: 'none',
+                      padding: '4px 10px',
+                      borderRadius: 6,
+                      fontSize: 12,
+                      fontWeight: 600,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    All ({users.length})
+                  </button>
+
+                  <button
+                    onClick={() => setUserFilterTab('pending')}
+                    style={{
+                      background: userFilterTab === 'pending' ? '#fef3c7' : 'transparent',
+                      color: userFilterTab === 'pending' ? '#b45309' : 'var(--text-secondary)',
+                      border: 'none',
+                      padding: '4px 10px',
+                      borderRadius: 6,
+                      fontSize: 12,
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 4
+                    }}
+                  >
+                    <span>⏳ Pending Approval</span>
+                    {pendingUsersCount > 0 && (
+                      <span style={{ background: '#d97706', color: 'white', fontSize: 10, padding: '0 5px', borderRadius: 10 }}>{pendingUsersCount}</span>
+                    )}
+                  </button>
+
+                  <button
+                    onClick={() => setUserFilterTab('approved')}
+                    style={{
+                      background: userFilterTab === 'approved' ? '#dcfce7' : 'transparent',
+                      color: userFilterTab === 'approved' ? '#15803d' : 'var(--text-secondary)',
+                      border: 'none',
+                      padding: '4px 10px',
+                      borderRadius: 6,
+                      fontSize: 12,
+                      fontWeight: 600,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    ✅ Active & Approved ({users.length - pendingUsersCount})
+                  </button>
                 </div>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                  {filteredUsers.map(u => (
-                    <div 
-                      key={u.id} 
-                      style={{ 
-                        display: 'flex', 
-                        alignItems: 'center', 
-                        justifyContent: 'space-between', 
-                        padding: '12px 14px', 
-                        border: '1px solid var(--border-subtle)', 
-                        borderRadius: 10,
-                        background: u.is_superadmin ? 'rgba(234, 179, 8, 0.04)' : 'transparent',
-                        transition: 'all 0.15s ease'
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                        {u.avatar_url ? (
-                          <img src={u.avatar_url} alt="" style={{ width: 36, height: 36, borderRadius: '50%' }} />
-                        ) : (
-                          <div style={{ 
-                            width: 36, 
-                            height: 36, 
-                            borderRadius: '50%', 
-                            background: u.is_superadmin ? '#eab308' : 'var(--accent)', 
-                            color: 'white', 
-                            display: 'flex', 
-                            alignItems: 'center', 
-                            justifyContent: 'center', 
-                            fontWeight: 700,
-                            fontSize: 14
-                          }}>
-                            {u.full_name?.[0] || 'U'}
-                          </div>
-                        )}
-                        <div>
-                          <div style={{ fontWeight: 600, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <span>{u.full_name || 'Unnamed User'}</span>
-                            {u.id === currentUser?.id && (
-                              <span style={{ color: 'var(--accent)', fontSize: 11, fontWeight: 600, background: 'var(--accent-subtle)', padding: '1px 6px', borderRadius: 4 }}>You</span>
-                            )}
-                            {u.city && (
-                              <span style={{ fontSize: 11, background: '#f1f5f9', color: '#475569', padding: '1px 6px', borderRadius: 6, fontWeight: 500 }}>
-                                📍 {u.city}
-                              </span>
-                            )}
-                          </div>
+                  {filteredUsers.map(u => {
+                    const isPending = u.is_approved === false && !u.is_superadmin;
 
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2 }}>
-                            {u.designation ? (
-                              <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                                💼 {u.designation}
-                              </span>
-                            ) : (
-                              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>No designation</span>
-                            )}
+                    return (
+                      <div 
+                        key={u.id} 
+                        style={{ 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          justifyContent: 'space-between', 
+                          padding: '12px 14px', 
+                          border: `1px solid ${isPending ? '#fde68a' : 'var(--border-subtle)'}`, 
+                          borderRadius: 10,
+                          background: isPending ? '#fffbeb' : (u.is_superadmin ? 'rgba(234, 179, 8, 0.04)' : 'transparent'),
+                          transition: 'all 0.15s ease'
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                          {u.avatar_url ? (
+                            <img src={u.avatar_url} alt="" style={{ width: 36, height: 36, borderRadius: '50%' }} />
+                          ) : (
+                            <div style={{ 
+                              width: 36, 
+                              height: 36, 
+                              borderRadius: '50%', 
+                              background: u.is_superadmin ? '#eab308' : (isPending ? '#d97706' : 'var(--accent)'), 
+                              color: 'white', 
+                              display: 'flex', 
+                              alignItems: 'center', 
+                              justifyContent: 'center', 
+                              fontWeight: 700,
+                              fontSize: 14
+                            }}>
+                              {u.full_name?.[0] || 'U'}
+                            </div>
+                          )}
+                          <div>
+                            <div style={{ fontWeight: 600, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                              <span>{u.full_name || 'Unnamed User'}</span>
+                              {u.id === currentUser?.id && (
+                                <span style={{ color: 'var(--accent)', fontSize: 11, fontWeight: 600, background: 'var(--accent-subtle)', padding: '1px 6px', borderRadius: 4 }}>You</span>
+                              )}
+                              {u.city && (
+                                <span style={{ fontSize: 11, background: '#f1f5f9', color: '#475569', padding: '1px 6px', borderRadius: 6, fontWeight: 500 }}>
+                                  📍 {u.city}
+                                </span>
+                              )}
+                              {isPending ? (
+                                <span style={{ fontSize: 10, background: '#fef3c7', color: '#b45309', padding: '1px 6px', borderRadius: 6, fontWeight: 700 }}>
+                                  ⏳ PENDING APPROVAL
+                                </span>
+                              ) : (
+                                !u.is_superadmin && (
+                                  <span style={{ fontSize: 10, background: '#dcfce7', color: '#15803d', padding: '1px 6px', borderRadius: 6, fontWeight: 600 }}>
+                                    ✓ APPROVED
+                                  </span>
+                                )
+                              )}
+                            </div>
 
-                            {u.is_superadmin && (
-                              <span style={{ fontSize: 10, color: '#eab308', fontWeight: 700, letterSpacing: '0.05em' }}>• 👑 SUPERADMIN</span>
-                            )}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2 }}>
+                              {u.designation ? (
+                                <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                                  💼 {u.designation}
+                                </span>
+                              ) : (
+                                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>No designation</span>
+                              )}
+
+                              {u.is_superadmin && (
+                                <span style={{ fontSize: 10, color: '#eab308', fontWeight: 700, letterSpacing: '0.05em' }}>• 👑 SUPERADMIN</span>
+                              )}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                      
-                      {/* Action Buttons: Edit & Delete */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <button
-                          onClick={() => openEditModal(u)}
-                          className="btn btn-secondary btn-sm"
-                          style={{ padding: '4px 10px', fontSize: 12 }}
-                          title="Edit user details"
-                        >
-                          ✏️ Edit
-                        </button>
+                        
+                        {/* Action Buttons: Quick Approve, Edit & Delete */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          {isPending ? (
+                            <button
+                              onClick={() => handleToggleApproval(u)}
+                              className="btn btn-primary btn-sm"
+                              style={{ padding: '5px 12px', fontSize: 12, background: '#16a34a', borderColor: '#16a34a' }}
+                              title="Approve this user immediately"
+                            >
+                              Approve ✅
+                            </button>
+                          ) : (
+                            !u.is_superadmin && u.id !== currentUser?.id && (
+                              <button
+                                onClick={() => handleToggleApproval(u)}
+                                className="btn btn-ghost btn-sm"
+                                style={{ padding: '4px 8px', fontSize: 11, color: 'var(--text-muted)' }}
+                                title="Revoke user access"
+                              >
+                                Revoke
+                              </button>
+                            )
+                          )}
 
-                        {u.id !== currentUser?.id && (
-                          <button 
-                            onClick={() => handleDeleteUser(u)}
-                            className="btn btn-ghost btn-sm" 
-                            style={{ color: 'var(--danger)', padding: '4px 8px', fontSize: 12 }}
-                            title="Delete this user permanently"
+                          <button
+                            onClick={() => openEditModal(u)}
+                            className="btn btn-secondary btn-sm"
+                            style={{ padding: '4px 10px', fontSize: 12 }}
+                            title="Edit user details"
                           >
-                            🗑️ Delete
+                            ✏️ Edit
                           </button>
-                        )}
+
+                          {u.id !== currentUser?.id && (
+                            <button 
+                              onClick={() => handleDeleteUser(u)}
+                              className="btn btn-ghost btn-sm" 
+                              style={{ color: 'var(--danger)', padding: '4px 8px', fontSize: 12 }}
+                              title="Delete this user permanently"
+                            >
+                              🗑️
+                            </button>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
 
                   {filteredUsers.length === 0 && (
                     <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
-                      No users match "{searchQuery}"
+                      No users match the selected tab or search query.
                     </div>
                   )}
                 </div>
@@ -335,6 +453,34 @@ export default function SuperadminPage() {
                   />
                 </div>
               </div>
+
+              {/* Approval Status Toggle */}
+              {editingUser.id !== currentUser?.id && !editingUser.is_superadmin && (
+                <div style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'space-between', 
+                  padding: '12px 14px', 
+                  borderRadius: 10, 
+                  background: editIsApproved ? '#f0fdf4' : '#fffbeb',
+                  border: `1px solid ${editIsApproved ? '#bbf7d0' : '#fef3c7'}`
+                }}>
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 13, color: editIsApproved ? '#15803d' : '#b45309' }}>
+                      {editIsApproved ? '✅ User Account is Approved' : '⏳ Pending Approval'}
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                      {editIsApproved ? 'User is active and allowed to log in' : 'User cannot sign in until approved'}
+                    </div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={editIsApproved}
+                    onChange={e => setEditIsApproved(e.target.checked)}
+                    style={{ width: 18, height: 18, cursor: 'pointer' }}
+                  />
+                </div>
+              )}
 
               {/* Toggle Superadmin Role */}
               {editingUser.id !== currentUser?.id && (
