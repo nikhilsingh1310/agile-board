@@ -205,6 +205,7 @@ function LoginForm() {
 
         {/* 2. AUTH FORM */}
         <form onSubmit={handleAuth} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <input type="hidden" name="role_type" value={roleType} />
           {authMode === 'signup' && (
             <>
               <div>

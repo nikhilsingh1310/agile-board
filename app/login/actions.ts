@@ -7,12 +7,11 @@ import { createClient } from '@/utils/supabase/server'
 export async function login(formData: FormData) {
   const supabase = await createClient()
 
-  // type-casting here for convenience
-  // in practice, you should validate your inputs
   const data = {
     email: formData.get('email') as string,
     password: formData.get('password') as string,
   }
+  const attemptedRole = formData.get('role_type') as string; // 'admin' or 'user'
 
   const { data: authData, error } = await supabase.auth.signInWithPassword(data)
 
@@ -20,12 +19,26 @@ export async function login(formData: FormData) {
     redirect(`/login?error=${encodeURIComponent(error.message)}`)
   }
 
-  // Check if account is approved by Admin
   if (authData.user) {
     const isMasterAdmin = authData.user.email?.toLowerCase() === 'admin@jira.com';
     const { data: profile } = await supabase.from('profiles').select('*').eq('id', authData.user.id).maybeSingle();
 
-    if (profile && profile.is_approved === false && !profile.is_superadmin && !isMasterAdmin) {
+    // 1. If user profile does not exist (e.g. was deleted by Admin)
+    if (!profile && !isMasterAdmin) {
+      await supabase.auth.signOut();
+      redirect(`/login?error=${encodeURIComponent('🚫 Account Not Found: Your account has been deleted by the administrator.')}`)
+    }
+
+    const isSuperadmin = isMasterAdmin || profile?.is_superadmin === true;
+
+    // 2. If trying to log in on the Admin tab without Admin privileges
+    if (attemptedRole === 'admin' && !isSuperadmin) {
+      await supabase.auth.signOut();
+      redirect(`/login?error=${encodeURIComponent('❌ Access Denied: This account does not have Admin privileges. Please sign in under the Team Member tab.')}`)
+    }
+
+    // 3. If account is pending approval or revoked
+    if (!isSuperadmin && (!profile || !profile.is_approved)) {
       await supabase.auth.signOut();
       redirect(`/login?error=${encodeURIComponent('⏳ Your account is pending Admin approval. Please contact the administrator to activate your access.')}`)
     }
