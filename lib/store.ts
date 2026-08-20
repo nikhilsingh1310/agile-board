@@ -379,6 +379,20 @@ export async function toggleSuperadmin(userId: string, isSuperadmin: boolean) {
   if (error) throw error;
 }
 
+export async function updateUserProfileAdmin(userId: string, data: { full_name?: string; city?: string; designation?: string; is_superadmin?: boolean }) {
+  const supabase = await createClient();
+  const { error } = await supabase.from('profiles').update(data).eq('id', userId);
+  if (error) throw error;
+}
+
+export async function deleteUserAdmin(userId: string) {
+  const supabase = await createClient();
+  // Remove project memberships and profile
+  await supabase.from('project_members').delete().eq('user_id', userId);
+  const { error } = await supabase.from('profiles').delete().eq('id', userId);
+  if (error) throw error;
+}
+
 export async function addProjectMember(projectId: string, userId: string, role: string) {
   const supabase = await createClient();
   const { error } = await supabase.from('project_members').insert({

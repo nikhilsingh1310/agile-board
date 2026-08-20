@@ -270,6 +270,7 @@ drop policy if exists "Project members and superadmins can manage attachments" o
 create policy "Profiles viewable by authenticated" on public.profiles for select using (true);
 create policy "Profiles insertable by authenticated" on public.profiles for insert with check (auth.uid() = id or public.is_superadmin());
 create policy "Profiles updatable by owner or superadmin" on public.profiles for update using (auth.uid() = id or public.is_superadmin());
+create policy "Profiles deletable by superadmin" on public.profiles for delete using (public.is_superadmin());
 
 -- 2. PROJECT MEMBERS POLICIES (Non-recursive via security definer helpers)
 create policy "Members select policy" on public.project_members for select using (
