@@ -382,7 +382,17 @@ export async function toggleSuperadmin(userId: string, isSuperadmin: boolean) {
 export async function updateUserProfileAdmin(userId: string, data: { full_name?: string; city?: string; designation?: string; is_superadmin?: boolean }) {
   const supabase = await createClient();
   const { error } = await supabase.from('profiles').update(data).eq('id', userId);
-  if (error) throw error;
+  if (error) {
+    if (error.message?.includes('column') || (error as any).code === '42703') {
+      const { error: fallbackErr } = await supabase.from('profiles').update({
+        full_name: data.full_name,
+        is_superadmin: data.is_superadmin
+      }).eq('id', userId);
+      if (fallbackErr) throw new Error(fallbackErr.message);
+      return;
+    }
+    throw new Error(error.message);
+  }
 }
 
 export async function deleteUserAdmin(userId: string) {

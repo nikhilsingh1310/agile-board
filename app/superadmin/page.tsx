@@ -65,7 +65,8 @@ export default function SuperadminPage() {
       setEditingUser(null);
       loadData();
     } catch (err: any) {
-      showToast(err.message || 'Failed to update user', '❌');
+      const msg = typeof err === 'string' ? err : (err?.message ? String(err.message) : 'Failed to update user');
+      showToast(msg, '❌');
     } finally {
       setIsSaving(false);
     }
