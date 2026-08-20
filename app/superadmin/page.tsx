@@ -121,7 +121,7 @@ export default function SuperadminPage() {
     );
   }
 
-  const pendingUsersCount = users.filter(u => u.is_approved === false && !u.is_superadmin).length;
+  const pendingUsersCount = users.filter(u => !u.is_approved && !u.is_superadmin).length;
 
   const filteredUsers = users.filter(u => {
     const matchesSearch = 
@@ -132,10 +132,10 @@ export default function SuperadminPage() {
     if (!matchesSearch) return false;
 
     if (userFilterTab === 'pending') {
-      return u.is_approved === false && !u.is_superadmin;
+      return !u.is_approved && !u.is_superadmin;
     }
     if (userFilterTab === 'approved') {
-      return u.is_approved !== false || u.is_superadmin;
+      return Boolean(u.is_approved) || u.is_superadmin;
     }
     return true;
   });
@@ -240,7 +240,7 @@ export default function SuperadminPage() {
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                   {filteredUsers.map(u => {
-                    const isPending = u.is_approved === false && !u.is_superadmin;
+                    const isPending = !u.is_approved && !u.is_superadmin;
 
                     return (
                       <div 
