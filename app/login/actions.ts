@@ -79,6 +79,44 @@ export async function signup(formData: FormData) {
   redirect('/')
 }
 
+export async function forgotPassword(formData: FormData) {
+  const supabase = await createClient()
+  const email = formData.get('email') as string
+
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL || 'https://nikhil-project-management-tool.vercel.app'}/auth/callback?next=/reset-password`,
+  })
+
+  if (error) {
+    redirect(`/login?error=${encodeURIComponent(error.message)}`)
+  }
+
+  redirect(`/login?message=${encodeURIComponent('📩 Reset link sent! Check your email inbox to choose a new password.')}`)
+}
+
+export async function updatePassword(formData: FormData) {
+  const supabase = await createClient()
+  const password = formData.get('password') as string
+  const confirmPassword = formData.get('confirm_password') as string
+
+  if (!password || password.length < 6) {
+    redirect(`/reset-password?error=${encodeURIComponent('Password must be at least 6 characters long.')}`)
+  }
+
+  if (password !== confirmPassword) {
+    redirect(`/reset-password?error=${encodeURIComponent('Passwords do not match.')}`)
+  }
+
+  const { error } = await supabase.auth.updateUser({ password })
+
+  if (error) {
+    redirect(`/reset-password?error=${encodeURIComponent(error.message)}`)
+  }
+
+  revalidatePath('/', 'layout')
+  redirect(`/login?message=${encodeURIComponent('🎉 Password updated successfully! Please sign in with your new password.')}`)
+}
+
 export async function signout() {
   const supabase = await createClient()
   await supabase.auth.signOut()
