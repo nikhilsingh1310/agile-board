@@ -403,10 +403,13 @@ export async function updateUserProfileAdmin(userId: string, data: { full_name?:
 
 export async function deleteUserAdmin(userId: string) {
   const supabase = await createClient();
-  // Remove project memberships and profile
-  await supabase.from('project_members').delete().eq('user_id', userId);
-  const { error } = await supabase.from('profiles').delete().eq('id', userId);
-  if (error) throw error;
+  const { error } = await supabase.rpc('delete_user_by_admin', { target_user_id: userId });
+  if (error) {
+    // Fallback: Remove from project_members and profiles directly
+    await supabase.from('project_members').delete().eq('user_id', userId);
+    const { error: profileErr } = await supabase.from('profiles').delete().eq('id', userId);
+    if (profileErr) throw new Error(error.message || profileErr.message);
+  }
 }
 
 export async function addProjectMember(projectId: string, userId: string, role: string) {
